@@ -1,0 +1,19 @@
+{
+  "name": "install-checkpoint",
+  "displayName": "Install Checkpoint",
+  "version": "0.1.0",
+  "description": "Stops package installs, download-and-run scripts, MCP/plugin additions and edits to Claude settings until a reviewer agent vets them and a human approves.",
+  "author": {
+    "name": "Olga Skrypchenko"
+  },
+  "license": "MIT",
+  "keywords": ["security", "supply-chain", "hooks", "review", "approval"],
+  "userConfig": {
+    "require_review": {
+      "type": "boolean",
+      "title": "Require a reviewer verdict",
+      "description": "When on, an install is blocked until the install-reviewer agent records a verdict; then you are asked to approve. When off, you are asked to approve every install directly.",
+      "default": true
+    }
+  }
+}
