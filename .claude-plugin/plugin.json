@@ -6,8 +6,16 @@
   "author": {
     "name": "Olga Skrypchenko"
   },
+  "homepage": "https://github.com/Skrripa/install-checkpoint",
+  "repository": "https://github.com/Skrripa/install-checkpoint",
   "license": "MIT",
-  "keywords": ["security", "supply-chain", "hooks", "review", "approval"],
+  "keywords": [
+    "security",
+    "supply-chain",
+    "hooks",
+    "review",
+    "approval"
+  ],
   "userConfig": {
     "require_review": {
       "type": "boolean",
