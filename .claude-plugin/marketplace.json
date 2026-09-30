@@ -1,0 +1,16 @@
+{
+  "name": "install-checkpoint",
+  "owner": {
+    "name": "Olga Skrypchenko"
+  },
+  "metadata": {
+    "description": "Install Checkpoint — review-then-approve gate for installs in Claude Code."
+  },
+  "plugins": [
+    {
+      "name": "install-checkpoint",
+      "source": "./",
+      "description": "Stops package installs, download-and-run scripts, MCP/plugin additions and edits to Claude settings until a reviewer agent vets them and a human approves."
+    }
+  ]
+}

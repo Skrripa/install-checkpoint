@@ -18,6 +18,17 @@ or change Claude's own settings in a single step. Install Checkpoint puts a paus
 - **Protects settings.** Edits to `~/.claude/settings.json`, `~/.claude.json`, `~/.claude/{skills,agents,commands,hooks,plugins}`,
   any `.mcp.json`, project `.claude/settings*.json`, `~/.codex`, and autostart folders always ask you first.
 
+## Install
+
+In Claude Code:
+
+```
+/plugin marketplace add Skrripa/install-checkpoint
+/plugin install install-checkpoint@install-checkpoint
+```
+
+Restart Claude Code after installing. To try it without installing: `claude --plugin-dir ./install-checkpoint`.
+
 ## How to use
 
 1. Enable the plugin. Nothing else to configure.
@@ -50,6 +61,15 @@ Requires Python 3.8+ available as `python3`.
 
 **Install Checkpoint** — «сначала проверка, потом установка». Плагин останавливает установку программ и пакетов,
 скачивание и запуск скриптов из интернета, подключение MCP-серверов и плагинов, `sudo`, автозапуск и правки настроек Claude.
+
+Установка в Claude Code:
+
+```
+/plugin marketplace add Skrripa/install-checkpoint
+/plugin install install-checkpoint@install-checkpoint
+```
+
+После установки перезапустите Claude Code.
 
 Как это работает:
 1. Хук видит команду установки и приостанавливает её.
