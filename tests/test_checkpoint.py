@@ -63,6 +63,10 @@ def main():
             got = run("Bash", {"command": cmd}, data)
             results.append((cmd, want, got))
 
+        # the hook itself must not create any files
+        written = [os.path.join(r, f) for r, _, fs in os.walk(data) for f in fs]
+        results.append(("hook wrote no files", "none", "none" if not written else "wrote %d" % len(written)))
+
         # review flow
         cmd = "brew install jq"
         write_review(data, cmd, "OK")

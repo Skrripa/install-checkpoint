@@ -7,6 +7,9 @@ Ask the `install-checkpoint:install-reviewer` agent to review this before anythi
 
 $ARGUMENTS
 
-If Install Checkpoint already paused a command, pass the agent the exact command and the review id from the
-checkpoint message so it can save its verdict. Show the human the agent's verdict table. Do not run the install
-yourself until the human says so; when they do, run the same command unchanged and the checkpoint will ask them to approve.
+Show the human the agent's verdict table.
+
+If Install Checkpoint already paused a command, it gave a review id and a file path. Save the agent's
+`VERDICT / COMMAND / SUMMARY` block, followed by its table, to that file (`${CLAUDE_PLUGIN_DATA}/reviews/<review id>.md`).
+Do not run the install until the human says so; then run the same command unchanged and the checkpoint will
+ask them to approve it.

@@ -4,14 +4,15 @@
 What it does
   1. Bash commands that install or download-and-run software (brew, npm, pip, npx,
      curl | sh, git clone, claude mcp add, sudo, ...) are stopped until the
-     install-reviewer agent has saved a verdict for that exact command. After that,
+     install-reviewer agent has vetted that exact command and its verdict is saved. After that,
      Claude Code asks the human to approve (a permission prompt that shows even in
      auto and bypass modes). A BLOCK verdict keeps the command denied.
   2. Writes to places that change how Claude or the computer behaves (Claude settings,
      skills, agents, plugins, MCP config, autostart) always ask the human first.
 
-Everything stays on this computer: reviews and a short log live in the plugin's data
-directory (CLAUDE_PLUGIN_DATA). Nothing is sent over the network.
+The hook only reads: it never writes files, never runs other programs and makes no network
+requests. Review verdicts are saved by Claude (not by this hook) in the plugin's data
+directory (CLAUDE_PLUGIN_DATA/reviews) and read from there.
 
 This is a guardrail, not a sandbox: a determined agent can hide a command (for example
 by building it inside a script). The human approval prompt is the real checkpoint.
@@ -27,7 +28,6 @@ HOME = os.path.expanduser("~")
 DATA = os.environ.get("CLAUDE_PLUGIN_DATA") or os.path.join(HOME, ".claude", "install-checkpoint")
 ROOT = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
 REVIEWS = os.path.join(DATA, "reviews")
-LOG = os.path.join(DATA, "log.tsv")
 REVIEW_TTL = datetime.timedelta(hours=24)
 
 INSTALL_PATTERNS = [
@@ -65,16 +65,6 @@ PROTECTED_SUFFIXES = ("/.mcp.json", "/.claude/settings.json", "/.claude/settings
 WRITE_HINTS = (r"(?<![0-9&])>(?!\s*/dev/null)|\btee\b|\bcp\b|\bmv\b|\brm\b|\bln\b|\bsed\s+-i|"
                r"\bchmod\b|\bchown\b|\btouch\b|\bmkdir\b|\bunzip\b|\btar\s+-?\w*x|\brsync\b|\bditto\b|"
                r"\bpython3?\s+-c\b|\bperl\s+-\w*[pie]")
-
-
-def log(row):
-    try:
-        os.makedirs(DATA, exist_ok=True)
-        with open(LOG, "a", encoding="utf-8") as f:
-            stamp = datetime.datetime.now().isoformat(timespec="seconds")
-            f.write("\t".join([stamp] + [r.replace("\t", " ").replace("\n", " ")[:300] for r in row]) + "\n")
-    except OSError:
-        pass
 
 
 def decide(decision, reason):
@@ -133,7 +123,6 @@ def check_write(tool, inp, sid):
         return
     path = os.path.realpath(os.path.expanduser(raw))
     if protected_path(path):
-        log([sid, tool, "ASK-PATH", path])
         decide("ask", "Install Checkpoint: this edit changes how Claude or your computer behaves (" + path +
                "). Approve only if you asked for this change.")
 
@@ -145,7 +134,6 @@ def check_bash(cmd, sid):
     if ROOT and ROOT in expanded:
         touched.append(ROOT)
     if touched and re.search(WRITE_HINTS, cmd):
-        log([sid, "Bash", "ASK-PATH", cmd])
         decide("ask", "Install Checkpoint: this command may change a protected place (" + touched[0] +
                "): Claude settings, skills, agents, plugins, MCP config or autostart. Approve only if you asked for it.")
 
@@ -156,23 +144,19 @@ def check_bash(cmd, sid):
     what = ", ".join(kinds)
 
     if not require_review():
-        log([sid, "Bash", "ASK-INSTALL", cmd])
         decide("ask", "Install Checkpoint: " + what + ". Approve only if you know what this installs and trust the source.")
 
     review = read_review(rid)
     if review is None:
-        log([sid, "Bash", "DENY-NO-REVIEW", cmd])
         decide("deny", "Install Checkpoint: " + what + " is paused until it is reviewed. Do not try another way "
-               "to install it. Ask the install-checkpoint:install-reviewer agent to vet this exact command "
-               "(review id " + rid + "). The agent saves its verdict to " + os.path.join(REVIEWS, rid + ".md") +
-               ". Then run the same command again, unchanged: the human will be asked to approve it.")
+               "to install it. Ask the install-checkpoint:install-reviewer agent to vet this exact command, then save "
+               "the verdict block it returns to " + os.path.join(REVIEWS, rid + ".md") + " (review id " + rid +
+               "). Then run the same command again, unchanged: the human will be asked to approve it.")
 
     verdict, summary = review
     if verdict == "BLOCK":
-        log([sid, "Bash", "DENY-VERDICT", cmd])
         decide("deny", "Install Checkpoint: the reviewer's verdict is BLOCK (" + summary + "). Do not install. "
                "Tell the human why and suggest a safer option.")
-    log([sid, "Bash", "ASK-REVIEWED-" + verdict, cmd])
     decide("ask", "Install Checkpoint: " + what + ". Reviewer verdict: " + verdict +
            (" — " + summary if summary else "") + ". Full review: " + os.path.join(REVIEWS, rid + ".md") +
            ". Approve only if you agree.")
