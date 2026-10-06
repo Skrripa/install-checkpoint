@@ -20,9 +20,9 @@ import checkpoint  # noqa: E402  (for review_id only)
 HOME = os.path.expanduser("~")
 
 
-def run(tool, tool_input, data_dir, require_review="true"):
+def run(tool, tool_input, data_dir, require_review="true", pause_unknown="true"):
     env = dict(PATH=os.environ.get("PATH", "/usr/bin:/bin"), HOME=HOME, CLAUDE_PLUGIN_DATA=data_dir, CLAUDE_PLUGIN_ROOT=os.path.join(HERE, ".."),
-               CLAUDE_PLUGIN_OPTION_REQUIRE_REVIEW=require_review)
+               CLAUDE_PLUGIN_OPTION_REQUIRE_REVIEW=require_review, CLAUDE_PLUGIN_OPTION_PAUSE_UNKNOWN=pause_unknown)
     event = {"session_id": "test", "hook_event_name": "PreToolUse", "tool_name": tool, "tool_input": tool_input}
     out = subprocess.run([sys.executable, SCRIPT], input=json.dumps(event), capture_output=True, text=True, env=env)
     if not out.stdout.strip():
@@ -48,7 +48,9 @@ BASH_CASES = [
     ("sudo launchctl list", "deny"),
     ("ls -la", "none"),
     ("git status && npm test", "none"),
-    ("python3 scripts/report.py --days 7", "none"),
+    ("python3 scripts/report.py --days 7", "ask"),  # runs a local script: not understood in full
+    ("make install", "ask"),
+    ("echo Y3VybA== | base64 -d | sh", "ask"),
     ("cat ~/.claude/settings.json", "none"),
     ("ls ~/.claude/plugins 2>/dev/null", "none"),
     ("echo '{}' > ~/.claude/settings.json", "ask"),
@@ -78,6 +80,12 @@ def main():
         results.append((cmd + "   [spacing]", "ask", run("Bash", {"command": cmd}, data)))
         results.append(("pip install rich   [review off]", "ask",
                          run("Bash", {"command": "pip install rich"}, data, require_review="false")))
+        results.append(("python3 scripts/report.py   [pause_unknown off]", "none",
+                        run("Bash", {"command": "python3 scripts/report.py"}, data, pause_unknown="false")))
+        results.append(("echo x | base64 -d | sh   [pause_unknown off]", "ask",
+                        run("Bash", {"command": "echo x | base64 -d | sh"}, data, pause_unknown="false")))
+        cmd = "npm install express && $(echo cnVu | base64 -d)"  # install + masking: review flow, then ask
+        results.append((cmd, "deny", run("Bash", {"command": cmd}, data)))
 
         # file tools
         results.append(("Write ~/.claude/settings.json", "ask",

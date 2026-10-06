@@ -10,7 +10,7 @@
     {
       "name": "install-checkpoint",
       "source": "./",
-      "description": "Read-only safety check: pauses package installs, download-and-run scripts, new MCP servers or plugins and edits to Claude settings, has them reviewed, then asks you to approve. Changes nothing on your computer and sends no data."
+      "description": "Read-only safety check: pauses package installs, download-and-run scripts, new MCP servers or plugins, hidden or not fully understood commands and edits to Claude settings, has installs reviewed, then asks you to approve. Changes nothing on your computer and sends no data."
     }
   ]
 }

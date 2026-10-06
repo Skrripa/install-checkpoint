@@ -1,8 +1,8 @@
 {
   "name": "install-checkpoint",
   "displayName": "Install Checkpoint",
-  "version": "0.2.0",
-  "description": "Read-only safety check: pauses package installs, download-and-run scripts, new MCP servers or plugins and edits to Claude settings, has them reviewed, then asks you to approve. Changes nothing on your computer and sends no data.",
+  "version": "0.3.0",
+  "description": "Read-only safety check: pauses package installs, download-and-run scripts, new MCP servers or plugins, hidden or not fully understood commands and edits to Claude settings, has installs reviewed, then asks you to approve. Changes nothing on your computer and sends no data.",
   "author": {
     "name": "Olga Skrypchenko"
   },
@@ -21,6 +21,12 @@
       "type": "boolean",
       "title": "Require a reviewer verdict",
       "description": "When on, an install is blocked until the install-reviewer agent records a verdict; then you are asked to approve. When off, you are asked to approve every install directly.",
+      "default": true
+    },
+    "pause_unknown": {
+      "type": "boolean",
+      "title": "Ask about commands that are not fully understood",
+      "description": "When on, you are asked before any command the checkpoint cannot understand in full (local scripts, unknown programs). When off, only hidden commands (variables or $(…) as a program, decoding, inline code, downloads) and installs are paused.",
       "default": true
     }
   }

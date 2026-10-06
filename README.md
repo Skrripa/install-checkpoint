@@ -13,7 +13,7 @@ computer. Here is exactly what this plugin does with that:
 
 | Part | What it can do | What it cannot do |
 |---|---|---|
-| Hook (`scripts/checkpoint.py`, ~200 lines of Python, no dependencies) | Looks at a command or file path **before** Claude runs it and answers "go ahead", "ask the human" or "wait for a review" | Write or delete files, run other programs, read your files' contents, connect to the internet |
+| Hook (`scripts/checkpoint.py` + `scripts/understand.py`, ~700 lines of Python, no dependencies) | Looks at a command or file path **before** Claude runs it and answers "go ahead", "ask the human" or "wait for a review" | Write or delete files, run other programs, read your files' contents, connect to the internet |
 | `install-reviewer` agent | Read files and search the web to research what is about to be installed | Run commands, install anything, change files |
 | `/install-checkpoint:review` command | A short instruction for Claude | — |
 
@@ -26,6 +26,18 @@ yourself: it is short on purpose.
   `yarn`, `pip`, `uv`, `poetry`, `conda`, `gem`, `cargo`, `go install`), package runners (`npx`, `uvx`, `pipx run`),
   download-and-run (`curl … | sh`), `git clone`, `claude mcp add`, `claude plugin install`, editor extensions,
   `sudo`, and autostart (`crontab`, `launchctl load`, `systemctl --user enable`) are denied until they are reviewed.
+- **No pause only when the whole command is understood.** Every part of a command (split at `;`, `&&`, `||`, `|`,
+  new lines) is read. If any part is not understood, you are asked first. That covers hidden installs: a program taken
+  from a variable or `$(…)`, `eval`, `source`, `xargs`, decoded text (`base64 -d`, `xxd -r`, `printf '\x…'`), inline
+  code (`python -c`, `node -e`, `perl -e`…), here-docs, `<(…)`, aliases and functions, downloads (`curl`, `wget`,
+  `aria2c`, `iwr`…), "write a file, then run it", local scripts and unknown programs. Wrappers such as `sudo`, `env`,
+  `nohup`, `timeout` are unwrapped and the real command is checked. Commands made only of known harmless parts
+  (`ls`, `cat`, `grep`, `git status`, `git commit`, `npm test`, `--version`…) run without a pause — only with safe
+  arguments: options that run another program (`tar --to-command`, `zip -TT`, `exec=`), `open` on apps or installers,
+  environment variables outside a short list (`PATH`, `NODE_OPTIONS`, `GIT_SSH_COMMAND`, `DYLD_*`…), `config set`,
+  writes to shell startup files, autostart, `.git/hooks`, `package.json` or PATH folders, and git remotes outside
+  github.com / gitlab.com all ask you first.
+  Unusual shell syntax and some options of common tools can still slip through; the approval prompt is the real checkpoint.
 - **Reviews.** The bundled read-only `install-reviewer` agent checks the source, author, install scripts and permissions
   in two passes (what is it / how could it hurt me) and returns a verdict: `OK`, `CAUTION` or `BLOCK`. Claude saves it
   for the checkpoint.
@@ -53,7 +65,10 @@ Restart Claude Code after installing. To try it without installing: `claude --pl
 3. Claude runs the reviewer (or you type `/install-checkpoint:review <command or link>`).
 4. Claude repeats the exact command. You see the verdict in the permission prompt and choose.
 
-Option `require_review` (on by default): turn it off to skip the reviewer and just be asked for every install.
+Options (both on by default):
+- `require_review` — turn it off to skip the reviewer and just be asked for every install.
+- `pause_unknown` — turn it off if questions about local scripts (`python3 script.py`, `make`, `cargo build`…) get in
+  the way. Hidden commands, downloads and installs are still paused.
 
 ## Data and privacy
 
@@ -63,14 +78,20 @@ The reviewer agent uses Claude's normal web search and fetch tools to research w
 
 ## Limits
 
-This is a guardrail, not a sandbox. It matches command text, so a command hidden inside a script is not caught.
+This is a guardrail, not a sandbox. It reads command text, so code hidden inside a file that was written earlier
+(for example by Claude's file editor) is not seen. That is why running local scripts asks you by default.
 The human approval prompt is the real checkpoint — read it before you approve.
 
 Requires Python 3.8+ available as `python3`.
 
 ## Tests
 
-`python3 tests/test_checkpoint.py` runs 24 cases (blocked, allowed, asked, review flow, and a check that the hook writes no files).
+- `python3 tests/test_checkpoint.py` — 29 cases: blocked, allowed, asked, review flow, options, and a check that the
+  hook writes no files.
+- `python3 tests/test_masking.py` — 128 hidden or indirect commands (none may run without a pause), 10 ordinary
+  installs (paused for review) and 29 harmless commands (no pause).
+- `python3 tests/test_redteam.py` — an independent red-team set: 97 hidden commands (none may run without a pause)
+  and 46 ordinary agent commands (installs paused for review, everything else without a pause).
 
 ---
 
@@ -79,6 +100,10 @@ Requires Python 3.8+ available as `python3`.
 **Install Checkpoint** — «сначала проверка, потом установка». Плагин только смотрит и спрашивает: он ничего не меняет
 на компьютере и никуда не отправляет данные. Он приостанавливает установку программ и пакетов, скачивание и запуск
 скриптов из интернета, подключение MCP-серверов и плагинов, `sudo`, автозапуск и правки настроек Claude.
+Правило с версии 0.3.0: команда проходит без паузы, только если понятна целиком. Всё замаскированное или непонятное
+(переменная вместо программы, `$(…)`, `eval`, расшифровка base64, код в одну строку, локальные скрипты, скачивание) —
+сначала вопрос вам. Необычный синтаксис оболочки и некоторые параметры обычных программ всё ещё могут проскочить;
+настоящая защита — окно разрешения.
 
 Почему при установке Claude показывает предупреждение: в плагине есть хук — маленький скрипт, который смотрит на команду
 до её запуска. Он не пишет и не удаляет файлы, не запускает другие программы и не выходит в интернет. Агент-проверяющий
@@ -100,7 +125,8 @@ Requires Python 3.8+ available as `python3`.
 3. Claude повторяет ту же команду — и вы видите окно разрешения с вердиктом. Решаете вы. При BLOCK установка запрещена.
 
 Данные никуда не отправляются: вердикты лежат локально в папке данных плагина, журнала нет. Ограничение: это страховка,
-а не песочница — команду, спрятанную внутри скрипта, хук не увидит. Главная защита — ваше «да» в окне разрешения.
+а не песочница — код внутри файла, записанного раньше, хук не увидит; поэтому запуск локальных скриптов по умолчанию
+спрашивает (настройка `pause_unknown`). Главная защита — ваше «да» в окне разрешения.
 
 ## License
 
