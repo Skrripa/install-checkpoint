@@ -61,7 +61,7 @@ SOFT_CODES = {"not_fully_understood", "runs_script"}
 # Local housekeeping that neither installs nor runs other code (on top of the parser's harmless list).
 LOCAL_PROGRAMS = {"rm", "kill", "pkill", "killall", "lsof", "man", "sw_vers", "pgrep", "top", "uptime"}
 understand.SAFE_PROGRAMS = understand.SAFE_PROGRAMS | LOCAL_PROGRAMS
-TARGET_LABELS = {"package": "package install", "repo": "repository clone", "download_and_run": "download and run"}
+TARGET_LABELS = {"package": "package install", "repo": "repository download", "download_and_run": "download and run"}
 
 PROTECTED = [
     os.path.join(HOME, ".claude", "settings.json"),

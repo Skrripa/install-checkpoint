@@ -88,8 +88,8 @@ Requires Python 3.8+ available as `python3`.
 
 - `python3 tests/test_checkpoint.py` — 29 cases: blocked, allowed, asked, review flow, options, and a check that the
   hook writes no files.
-- `python3 tests/test_masking.py` — 128 hidden or indirect commands (none may run without a pause), 10 ordinary
-  installs (paused for review) and 29 harmless commands (no pause).
+- `python3 tests/test_masking.py` — 165 hidden or indirect commands (none may run without a pause), 14 ordinary
+  installs (paused for review) and 40 harmless commands (no pause).
 - `python3 tests/test_redteam.py` — an independent red-team set: 97 hidden commands (none may run without a pause)
   and 46 ordinary agent commands (installs paused for review, everything else without a pause).
 

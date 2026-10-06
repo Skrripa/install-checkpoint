@@ -29,7 +29,17 @@ SHELLS = INTERP_PROGS | {"source", ".", "iex", "Invoke-Expression"}
 # Wrappers that run the command that follows them. They are unwrapped and the real command is analysed.
 WRAPPERS = {"sudo", "doas", "env", "exec", "command", "builtin", "time", "nohup", "nice", "ionice", "stdbuf", "export",
             "timeout", "watch", "caffeinate", "chronic", "unbuffer", "setsid", "firejail"}
-WRAPPER_VALUE_FLAGS = {"-u", "-g", "-C", "-h", "-p", "-n", "-s", "-k", "-c", "--signal", "--kill-after", "--interval", "-d"}
+# Options that take a value, per wrapper. Any other option is a plain switch and never swallows the program.
+WRAPPER_VALUE_FLAGS = {
+    "sudo": {"-u", "-g", "-C", "-h", "-p", "-D", "-R", "-T", "-U", "-r", "-t", "--user", "--group", "--close-from",
+             "--host", "--prompt", "--chdir", "--chroot", "--command-timeout", "--other-user", "--role", "--type"},
+    "doas": {"-u", "-C"}, "env": {"-u", "-C", "--unset", "--chdir"}, "exec": {"-a"}, "time": {"-o", "-f", "--output", "--format"},
+    "nice": {"-n", "--adjustment"}, "ionice": {"-c", "-n", "-p", "-P", "-u", "--class", "--classdata"},
+    "stdbuf": {"-i", "-o", "-e", "--input", "--output", "--error"}, "timeout": {"-s", "-k", "--signal", "--kill-after"},
+    "watch": {"-n", "-q", "--interval", "--equexit"}, "caffeinate": {"-t", "-w"},
+}
+# Folders whose programs are the system's own: /usr/bin/npm is npm, but /tmp/evil/ls is not ls.
+SYSTEM_DIRS = {"/bin", "/usr/bin", "/usr/local/bin", "/sbin", "/usr/sbin", "/usr/local/sbin", "/opt/homebrew/bin"}
 REGISTRY_FILES = re.compile(r"(?:^|[\s/'\"=>])(?:\.npmrc|\.yarnrc(?:\.yml)?|pip\.conf|pip\.ini|uv\.toml|\.pypirc|pydistutils\.cfg)\b")
 PIPE_TO_INTERPRETER = re.compile(r"(?<!\|)\|&?\s*(?:sudo\s+(?:-\S+\s+)*)?(?:\S*/)?(?:env\s+(?:-\S+\s+)*)?(?:\S*/)?"
                                  r"(?:sh|bash|zsh|dash|ksh|fish|csh|tcsh|python[23]?|node|nodejs|perl|ruby|php|pwsh|powershell|lua|osascript)\b")
@@ -51,20 +61,32 @@ SAFE_GIT = {"status", "log", "diff", "show", "branch", "checkout", "switch", "ad
             "rev-parse", "stash", "tag", "init", "merge", "rebase", "reset", "restore", "blame", "describe", "ls-files",
             "shortlog", "reflog", "cherry-pick", "revert", "mv", "rm", "grep", "version", "--version", "help"}
 SAFE_PKG_SUBCOMMANDS = {"run", "test", "start", "ls", "list", "outdated", "audit", "view", "info", "show", "version", "-v",
-                        "--version", "whoami", "ping", "help", "-h", "--help", "why", "explain", "doctor", "prune", "dedupe",
+                        "--version", "whoami", "ping", "help", "-h", "--help", "why", "explain", "doctor", "prune",
                         "freeze", "check", "cache", "build", "lint", "format", "pack", "init", "remove", "uninstall", "rm",
-                        "un", "unlink", "search", "fund", "venv", "lock", "tree"}
-SAFE_PY_MODULES = {"http.server", "venv", "json.tool", "pytest", "unittest", "compileall", "py_compile", "doctest",
-                   "timeit", "this", "site", "pip"}
+                        "un", "unlink", "search", "fund", "venv", "tree"}
+# pip (also `python -m pip`, `uv pip`): only these read-only subcommands are OK.
+SAFE_PIP = {"list", "freeze", "show", "check", "cache", "help", "-h", "--help", "--version", "-V", ""}
+# Options allowed before `--` with safe npm / pnpm / yarn / bun / uv / poetry / pipenv subcommands. Anything else can set
+# config that runs code (--node-options, --script-shell, --init-module, --prefix…).
+SAFE_PKG_FLAGS = {"-s", "--silent", "-q", "--quiet", "--json", "-l", "--long", "--all", "-a", "-g", "--global", "--depth",
+                  "--prod", "--production", "--dev", "--if-present", "-v", "--version", "-h", "--help", "--parseable",
+                  "--omit", "--include", "--recursive", "-r", "--verbose", "--no-color", "--color", "--frozen", "--locked",
+                  "--offline", "--no-audit", "--no-fund", "--ignore-scripts", "--dry-run", "--force"}
+# Arguments after `--` go to the project's own script; refuse the ones that load or run other code.
+RISKY_SCRIPT_ARG = re.compile(r"node-options|require|import|loader|eval|exec|inspect|data:|https?://|script-shell|preload", re.I)
+SAFE_PY_MODULES = {"http.server", "venv", "json.tool", "pytest", "unittest", "compileall", "py_compile", "this", "site"}
 # Environment variables that only change output or app mode. Any other VAR=… can change what runs or loads.
 SAFE_ENV = {"CI", "NODE_ENV", "DEBUG", "FORCE_COLOR", "NO_COLOR", "LANG", "TZ", "TERM", "PORT", "HOST"}
-# Options that make a "safe" program run another program.
-DANGEROUS_ARGS = {
-    "tar": re.compile(r"^(--to-command|--checkpoint-action|--use-compress-program|--info-script|--new-volume-script|"
-                      r"--rsh-command|-I|-F|-[A-Za-z]*[IF])"),
-    "zip": re.compile(r"^(-TT|--unzip-command)"),
-    "sort": re.compile(r"^--compress-program"),
+# Options that make a "safe" program run another program. Long options also match by any unique start (--to-c=…),
+# as getopt accepts them.
+DANGEROUS_LONG = {
+    "tar": ("--to-command", "--checkpoint-action", "--use-compress-program", "--info-script", "--new-volume-script",
+            "--rsh-command", "--rmt-command"),
+    "zip": ("--unzip-command",), "sort": ("--compress-program",), "rg": ("--pre",), "ag": ("--pager",),
+    "less": ("--lesskey-src",), "man": ("--pager",),
 }
+DANGEROUS_SHORT = {"tar": re.compile(r"^-[A-Za-z]*[IF]"), "zip": re.compile(r"^-TT"), "less": re.compile(r"^\+"),
+                   "more": re.compile(r"^\+"), "man": re.compile(r"^-[A-Za-z]*P")}
 EXEC_ARG = re.compile(r"(?:exec|command)=", re.I)
 # Files and folders whose contents run later: shell startup files, autostart, hooks, PATH folders, package.json.
 PERSISTENT_TARGET = re.compile(r"(?:^|/)(?:\.bashrc|\.zshrc|\.zshenv|\.profile|\.bash_profile|\.bash_login|\.zprofile|"
@@ -77,6 +99,7 @@ def _segments(cmd):
     """Split a shell command into simple commands at | || && ; & and newlines, keeping quotes intact."""
     lexer = shlex.shlex(cmd.replace("\n", " ; "), posix=True, punctuation_chars="|&;")
     lexer.whitespace_split = True
+    lexer.commenters = ""  # bash keeps `#` inside a word (echo hi#; ./x); comment text is read too, which is only stricter
     segs, cur = [], []
     try:
         tokens = list(lexer)
@@ -108,20 +131,34 @@ def _strip_prefix(words, notes):
                 notes.append(finding("CAUTION", "env_override", "Sets %s — environment variables like this can change what "
                                      "programs run or load." % m.group(1)))
             out.pop(0)
-        elif w in WRAPPERS or w.rsplit("/", 1)[-1] in WRAPPERS:
-            name = out.pop(0).rsplit("/", 1)[-1]
-            while out and out[0].startswith("-"):
+        elif _system_name(w) in WRAPPERS:
+            name = _system_name(out.pop(0))
+            while out and out[0].startswith("-") and out[0] != "--":
                 flag = out.pop(0)
-                if flag in WRAPPER_VALUE_FLAGS and "=" not in flag and out:
+                if name == "env" and (re.match(r"^-[A-Za-z]*S", flag) or flag.startswith("--split-string")):
+                    notes.append(finding("CAUTION", "indirect_program", "env -S runs a command given as one string — not checked."))
+                elif flag in WRAPPER_VALUE_FLAGS.get(name, ()) and out:
                     out.pop(0)
+            if out and out[0] == "--":
+                out.pop(0)
             if name == "timeout" and out and re.match(r"^\d+(\.\d+)?[smhd]?$", out[0]):
                 out.pop(0)
+            if not out and name != "export":
+                notes.append(finding("CAUTION", "not_fully_understood", "%s is used without a command it would run — "
+                                     "not understood." % name))
         else:
             break
-    if out:
-        if out[0].startswith("/") and "$" not in out[0]:
-            out[0] = out[0].rsplit("/", 1)[-1]  # /usr/bin/npm -> npm; ./script stays ./script
+    if out and _system_name(out[0]):
+        out[0] = _system_name(out[0])  # /usr/bin/npm -> npm; /tmp/evil/ls and ./script stay as they are
     return out
+
+
+def _system_name(word):
+    """Program name for a bare word or a program in a system folder (/usr/bin/x -> x); None for any other path."""
+    if "/" not in word:
+        return word
+    folder, _, name = word.rpartition("/")
+    return name if folder in SYSTEM_DIRS and name and "$" not in word else None
 
 
 def _is_registry_flag(name, attached_short):
@@ -284,6 +321,7 @@ def parse_command(cmd):
         if heredoc and w[0] in INTERP_PROGS and any(t.startswith("<<") for t in w):
             notes.append(finding("CAUTION", "heredoc_to_interpreter", "Feeds an inline script (here-document) to %s — not checked." % w[0]))
             continue
+        w = _as_pip(w)
         handled = _parse_segment(w, targets, notes)
         if handled is None and dr and w[0] in FETCHERS | SHELLS | {"eval", "chmod", "tee"}:
             handled = True  # part of the download-and-run already reported
@@ -299,13 +337,38 @@ def parse_command(cmd):
     return targets, notes
 
 
+PIP_GLOBAL_VALUE = {"--python", "--log", "--log-file", "--local-log", "--proxy", "--retries", "--timeout", "--exists-action",
+                    "--cert", "--client-cert", "--cache-dir", "--use-feature", "--use-deprecated", "--keyring-provider"}
+
+
+def _as_pip(w):
+    """`python3 -m pip …` and `uv pip …` are pip."""
+    if re.match(r"^python[0-9.]*$", w[0]) and w[1:3] == ["-m", "pip"]:
+        return ["pip"] + w[3:]
+    if w[0] == "uv" and w[1:2] == ["pip"]:
+        return ["pip"] + w[2:]
+    return w
+
+
+def _git_args(rest):
+    """git arguments after the general options (-C <dir>, -c <key=value>, --git-dir <dir>…)."""
+    args = list(rest)
+    while args and args[0].startswith("-"):
+        args = args[2:] if args[0] in ("-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env") else args[1:]
+    return args
+
+
+def _pip_sub(rest):
+    """(subcommand, other args) for pip, skipping general options that come first (pip -q --python x install …)."""
+    i = 0
+    while i < len(rest) and rest[i].startswith("-"):
+        i += 2 if rest[i] in PIP_GLOBAL_VALUE else 1
+    return (rest[i], rest[:i] + rest[i + 1:]) if i < len(rest) else ("", rest)
+
+
 def _parse_segment(w, targets, notes):
     """Parse one simple command. Returns True when it was understood (even if nothing to check), None otherwise."""
     prog, rest = w[0], w[1:]
-    if prog in ("python", "python3") and rest[:2] == ["-m", "pip"]:
-        prog, rest = "pip", rest[2:]
-    if prog == "uv" and rest[:1] == ["pip"]:
-        prog, rest = "pip", rest[1:]
 
     if prog in INTERP_PROGS and any(a in ("-c", "-e", "-E", "--eval", "-p", "--print", "-r", "eval", "-Command", "-command",
                                           "-EncodedCommand", "-enc", "-e:") for a in rest):
@@ -364,12 +427,17 @@ def _parse_segment(w, targets, notes):
         _runner(rest, notes, targets)
         return True
     if prog in ("pip", "pip3"):
-        if rest[:1] == ["config"] and "set" in rest:
+        sub, args = _pip_sub(rest)
+        if sub == "config" and "set" in args:
             notes.append(finding("CAUTION", "custom_registry", "Changes the pip configuration (index or trusted host)."))
             return True
-        if rest[:1] == ["install"]:
-            joined = " ".join(rest)
-            pos, _ = _walk(rest[1:], PIP_VALUE, registry_flags=PIP_REGISTRY, other_notes=notes, attached_short=PIP_SHORT)
+        if sub == "lock":
+            notes.append(finding("CAUTION", "project_dependencies", "pip lock resolves packages and may build them — not checked."))
+            return True
+        if sub in ("install", "download", "wheel"):  # download / wheel fetch packages and may build (run) them too
+            joined = " ".join(args)
+            pos, _ = _walk(args, PIP_VALUE | PIP_GLOBAL_VALUE, registry_flags=PIP_REGISTRY, other_notes=notes,
+                           attached_short=PIP_SHORT)
             for flag_val in re.findall(r"(?:^|\s)(?:-r|--requirement)(?:=|\s+)(\S+)", joined):
                 notes.append(finding("CAUTION", "requirements_file", "Installs from a requirements file — its contents are not checked.", flag_val))
             for flag_val in re.findall(r"(?:^|\s)(?:-e|--editable)(?:=|\s+)(\S+)", joined):
@@ -416,6 +484,25 @@ def _parse_segment(w, targets, notes):
         if pos:
             targets.append({"type": "repo", "url": pos[0]})
         return True
+    if prog == "git":  # a repository named in pull / fetch / remote add / set-url is checked like a clone
+        args = _git_args(rest)
+        sub = args[0] if args else ""
+        if sub in ("pull", "fetch") or (sub == "remote" and args[1:2] in (["add"], ["set-url"])) or \
+                (sub == "submodule" and "add" in args):
+            targets += [{"type": "repo", "url": a} for a in args[1:] if _git_host(a) in TRUSTED_GIT_HOSTS]
+            return _classify_other(w, notes)
+        return None
+    first = next((i for i, a in enumerate(rest) if not a.startswith("-")), None)
+    if prog in ("poetry", "pipenv") and first is not None and rest[first] == "run":
+        i = first
+        if any(a.startswith("-") and a not in ("-q", "--quiet", "-v", "-vv", "-vvv", "--verbose", "-n", "--no-interaction",
+                                               "--no-ansi", "--ansi") for a in rest[:i]) or not rest[i + 1:]:
+            notes.append(finding("CAUTION", "runs_code", "%s run with these options is not understood — not checked." % prog))
+            return True
+        sub_t, sub_n = parse_command(" ".join(shlex.quote(x) for x in rest[i + 1:]))
+        targets += sub_t
+        notes += sub_n
+        return True
     if prog == "gh" and rest[:2] == ["repo", "clone"] and len(rest) >= 3:
         repo = rest[2] if "://" in rest[2] else "https://github.com/" + rest[2]
         targets.append({"type": "repo", "url": repo})
@@ -449,6 +536,30 @@ def _folder_like(arg):
     return last in (".", "..", "~", "") or "." not in last
 
 
+SED_S = re.compile(r"s(.)((?:\\.|(?!\1).)*)\1((?:\\.|(?!\1).)*)\1([A-Za-z0-9]*)")
+
+
+def _sed_runs(script):
+    """sed `e` (run a command), `w`/`W` (write a file), or s///e, s///w."""
+    if any(set("ew") & set(m.group(4)) for m in SED_S.finditer(script)):
+        return True
+    rest = re.sub(r"/(?:\\.|[^/])*/", " ", SED_S.sub(" ", script))  # drop s/// and /address/ text
+    return bool(re.search(r"(?:^|[;{}\s\d$!,])[ewW](?:\s|$|;|})", rest))
+
+
+def _dangerous_option(prog, rest):
+    """An option that makes a 'safe' program run another program (long options match by any unique start)."""
+    longs = DANGEROUS_LONG.get(prog, ())
+    for a in rest:
+        name = a.split("=", 1)[0]
+        if name.startswith("--") and len(name) > 3 and any(d.startswith(name) for d in longs):
+            return True
+        if prog in DANGEROUS_SHORT and DANGEROUS_SHORT[prog].match(a):
+            return True
+    # old tar form without a dash: tar xIf prog a.tar
+    return prog == "tar" and bool(rest) and bool(re.match(r"^[A-Za-z]*[IF]", rest[0]))
+
+
 def _git_host(arg):
     """Host of a git URL (https://host/…, ssh://host/…, git@host:…), or None for anything else."""
     m = re.match(r"^(?:[a-z+]+://(?:[^@/]+@)?|[\w.-]+@)([^/:]+)[:/]", arg, re.I)
@@ -458,7 +569,7 @@ def _git_host(arg):
 def _classify_other(w, notes):
     """Commands outside the install handlers. True = understood (safe, or reported); None = not understood."""
     prog, rest = w[0], w[1:]
-    if any(EXEC_ARG.search(a) for a in rest) or (prog in DANGEROUS_ARGS and any(DANGEROUS_ARGS[prog].match(a) for a in rest)):
+    if any(EXEC_ARG.search(a) for a in rest) or _dangerous_option(prog, rest):
         notes.append(finding("CAUTION", "dangerous_option", "%s is given an option that can run another program — not checked." % prog))
         return True
     if prog in ("code", "cursor", "codium"):
@@ -477,7 +588,7 @@ def _classify_other(w, notes):
     if prog == "xargs":
         notes.append(finding("CAUTION", "indirect_program", "xargs builds a command from its input — what runs is not known in advance."))
         return True
-    if prog in ("source", ".") or prog.startswith("./") or prog.startswith("../") or (prog.startswith("/") and prog not in SAFE_PROGRAMS):
+    if prog in ("source", ".") or prog.startswith(("./", "../", "/", "~")):
         notes.append(finding("CAUTION", "runs_script", "Runs a local script or binary (%s) — its contents are not checked." % prog[:60]))
         return True
     if prog in INTERP_PROGS:
@@ -516,7 +627,16 @@ def _classify_other(w, notes):
         if sub in SAFE_GIT or sub == "config":
             return True
         return None
-    if prog in ("npm", "pnpm", "yarn", "bun", "pip", "pip3", "uv", "poetry", "pipenv"):
+    if prog in ("pip", "pip3"):
+        sub, args = _pip_sub(rest)
+        if sub == "config":
+            action = next((a for a in args if not a.startswith("-")), "")
+            if action in ("get", "list", ""):
+                return True
+            notes.append(finding("CAUTION", "config_change", "Changes pip settings — they can redirect installs — not checked."))
+            return True
+        return True if sub in SAFE_PIP else None
+    if prog in ("npm", "pnpm", "yarn", "bun", "uv", "poetry", "pipenv"):
         pos = [a for a in rest if not a.startswith("-")]
         sub = pos[0] if pos else ""
         if sub in ("config", "set", "get"):
@@ -527,7 +647,25 @@ def _classify_other(w, notes):
             notes.append(finding("CAUTION", "config_change", "Changes %s settings — they can redirect installs or run other "
                                  "programs — not checked." % prog))
             return True
+        if sub == "audit" and "fix" in pos[1:]:
+            notes.append(finding("CAUTION", "project_dependencies", "%s audit fix installs and updates packages — not checked." % prog))
+            return True
+        if (sub == "pack" and len(pos) > 1) or (sub == "cache" and pos[1:2] == ["add"]):
+            notes.append(finding("CAUTION", "download", "%s %s downloads a package (and may run its prepare script) — not "
+                                 "checked." % (prog, sub)))
+            return True
+        if sub in ("lock", "sync"):
+            notes.append(finding("CAUTION", "project_dependencies", "%s %s resolves or installs the project's dependencies — "
+                                 "not checked." % (prog, sub)))
+            return True
         if sub in SAFE_PKG_SUBCOMMANDS or not sub:
+            before = rest[:rest.index("--")] if "--" in rest else rest
+            after = rest[len(before) + 1:]
+            odd = [a for a in before if a.startswith("-") and a.split("=", 1)[0] not in SAFE_PKG_FLAGS]
+            odd += [a for a in after if RISKY_SCRIPT_ARG.search(a)]
+            if odd:
+                notes.append(finding("CAUTION", "dangerous_option", "%s %s is given an option that can change what runs (%s) — "
+                                     "not checked." % (prog, sub, odd[0][:60])))
             return True
         return None
     if prog == "find":
@@ -535,10 +673,33 @@ def _classify_other(w, notes):
             notes.append(finding("CAUTION", "runs_script", "find -exec runs other programs — not checked."))
             return True
         return True
-    if prog in ("awk", "gawk", "sed"):
-        if re.search(r"system\s*\(|\|\s*getline|\be\b\s*$|/e\b", " ".join(rest)):
-            notes.append(finding("CAUTION", "runs_script", "%s can run other programs here — not checked." % prog))
+    if prog in ("awk", "gawk", "nawk", "mawk"):
+        if any(a.split("=", 1)[0] in ("-f", "--file", "-l", "--load", "-i", "--include", "-E", "--exec") for a in rest):
+            notes.append(finding("CAUTION", "runs_script", "%s loads a program or extension from a file — not checked." % prog))
             return True
+        program, i = None, 0
+        while i < len(rest):
+            if rest[i] in ("-F", "-v", "--field-separator", "--assign"):
+                i += 2
+            elif rest[i].startswith("-"):
+                i += 1
+            else:
+                program = rest[i]
+                break
+        if program is None or re.search(r"system|getline|\|", program):
+            notes.append(finding("CAUTION", "runs_script", "%s program can run other programs (system, getline or |) — not "
+                                 "checked." % prog))
+        return True
+    if prog in ("sed", "gsed"):
+        if any(a.split("=", 1)[0] in ("-f", "--file") or (re.match(r"^-[a-zA-Z]*f", a) and not a.startswith("--")) for a in rest):
+            notes.append(finding("CAUTION", "runs_script", "sed reads its script from a file — not checked."))
+            return True
+        scripts = [rest[i + 1] for i, a in enumerate(rest[:-1]) if a in ("-e", "--expression")]
+        scripts += [a.split("=", 1)[1] for a in rest if a.startswith("--expression=")]
+        if not scripts:  # the script is the first word, but `-i ''` / `-i .bak` can come first: read every word
+            scripts = [a for a in rest if not a.startswith("-")]
+        if any(_sed_runs(s) for s in scripts):
+            notes.append(finding("CAUTION", "runs_script", "sed command e or w can run a program or write a file — not checked."))
         return True
     if prog in SAFE_PROGRAMS:
         return True

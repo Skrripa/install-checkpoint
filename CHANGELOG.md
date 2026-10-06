@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.1 — 2026-10-07
+- `#` inside a word no longer hides the rest of a command (`echo hi#; ./x`).
+- `python -m pip` and `uv pip` are read as pip (options before the subcommand too); `pip download` / `wheel` are
+  checked like installs; `pip lock` asks; only read-only pip subcommands pass. `python -m timeit` / `doctest` ask.
+- `env -S` / `--split-string` asks; wrapper options no longer swallow the program (`time -p`, `sudo -n`, `command -p`,
+  `watch -d`); a program run by a path outside the system folders (`/tmp/x/ls`) asks.
+- A github.com repository named in `git pull` / `fetch` / `remote add` / `set-url` goes through the review like a clone.
+- npm / pnpm / yarn / bun options outside a short list ask (`--node-options`, `--script-shell`, `--init-module`,
+  `--prefix`…), as do risky arguments after `--`; `npm audit fix`, `npm pack <spec>`, `npm cache add`, `lock` / `sync` ask.
+- awk with `|` / `getline` / program files, sed `e` / `w` / script files, abbreviated long options (`tar --to-c=`),
+  old `tar xIf`, `rg --pre`, `less +…` ask.
+- `poetry run` / `pipenv run` are read as the command they run.
+- Tests: `tests/test_masking.py` now has 165 hidden commands (0 without a pause), 14 installs, 40 harmless commands.
+
 ## 0.3.0 — 2026-10-07
 - **No pause only when the whole command is understood.** A new parser (`scripts/understand.py`, standard library
   only, no network) reads every part of a command. Anything not understood asks you first.
